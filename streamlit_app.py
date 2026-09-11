@@ -20,6 +20,34 @@ from vietlott_mega645.client import DrawRecord, FetchError, VietlottMega645Clien
 from vietlott_mega645.storage import DEFAULT_DATA_DIR, DEFAULT_DATASET_PATH, DEFAULT_MANIFEST_PATH, load_manifest, load_records, merge_records, write_dataset
 
 
+def _on_streamlit_cloud() -> bool:
+    return Path("/mount/src").exists()
+
+
+def _user_facing_fetch_error(exc: FetchError) -> str:
+    message = str(exc)
+    # #region agent log
+    _agent_log(
+        "H1",
+        "streamlit_app.py:_user_facing_fetch_error",
+        "cloud fetch mapped",
+        {
+            "msg": message[:300],
+            "cloud": _on_streamlit_cloud(),
+            "http_403": "HTTP 403" in message,
+        },
+        run_id="post-fix",
+    )
+    # #endregion
+    if "HTTP 403" in message:
+        return (
+            "vietlott.vn trả HTTP 403 từ máy chủ này. Streamlit Cloud dùng IP datacenter "
+            "nên Cloudflare thường chặn crawl trực tiếp. UI vẫn đọc data/official_mega645.jsonl "
+            "đã commit. Cập nhật bền: chạy local `python -m vietlott_mega645 sync --all --delay 0.2` rồi push GitHub."
+        )
+    return message
+
+
 st.set_page_config(
     page_title="Mega 6/45 Python Lab",
     page_icon=None,
@@ -181,7 +209,7 @@ def sync_from_official(max_pages: int | None, delay_seconds: float) -> dict[str,
             run_id="post-fix",
         )
         # #endregion
-        return {"status": "error", "error": str(exc)}
+        return {"status": "error", "error": _user_facing_fetch_error(exc)}
     except Exception as exc:  # noqa: BLE001 - debug capture then re-raise.
         # #region agent log
         _agent_log(
@@ -217,6 +245,10 @@ with st.sidebar:
     max_pages_choice = st.number_input("Số trang crawl", min_value=1, max_value=196, value=3, step=1)
     fetch_all = st.checkbox("Crawl toàn bộ lịch sử", value=False)
     delay = st.slider("Delay mỗi trang", min_value=0.1, max_value=2.0, value=0.3, step=0.1)
+    if _on_streamlit_cloud():
+        st.caption(
+            "Máy chủ Cloud có thể bị vietlott.vn/Cloudflare chặn lúc crawl. Dataset chính là JSONL trong repo."
+        )
     if st.button("Cập nhật từ Vietlott", width="stretch"):
         with st.spinner("Đang đọc dữ liệu public từ vietlott.vn"):
             result = sync_from_official(None if fetch_all else int(max_pages_choice), float(delay))

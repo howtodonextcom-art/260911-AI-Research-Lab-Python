@@ -18,13 +18,10 @@ DETAIL_PATH = "/vi/trung-thuong/ket-qua-trung-thuong/645?id={draw_id}&nocatche=1
 HISTORY_PATH = "/vi/trung-thuong/ket-qua-trung-thuong/winning-number-645"
 AJAX_COMPARE_PATH = "/ajaxpro/Vietlott.PlugIn.WebParts.Game645CompareWebPart,Vietlott.PlugIn.WebParts.ashx"
 
-DEFAULT_USER_AGENT = (
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
-)
+DEFAULT_USER_AGENT = "mega645-research-lab-python-poc/0.1 (+https://vietlott.vn)"
 DEFAULT_TIMEOUT_SECONDS = 20
 DEFAULT_MAX_RESPONSE_BYTES = 5 * 1024 * 1024
-RETRYABLE_HTTP_CODES = {403, 408, 425, 429, 500, 502, 503, 504}
+RETRYABLE_HTTP_CODES = {408, 425, 429, 500, 502, 503, 504}
 DRAW_SIZE = 6
 MIN_NUMBER = 1
 MAX_NUMBER = 45
@@ -321,10 +318,7 @@ class VietlottMega645Client:
     def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
         headers = {
             "User-Agent": self.user_agent,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Referer": self._url(HISTORY_PATH),
-            "Origin": self.base_url,
+            "Accept": "text/html,application/xhtml+xml",
         }
         if extra:
             headers.update(extra)
