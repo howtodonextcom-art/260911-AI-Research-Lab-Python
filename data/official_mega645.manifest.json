@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "product": "mega645",
+  "source": {
+    "id": "vietlott.vn",
+    "url": "https://vietlott.vn/vi/trung-thuong/ket-qua-trung-thuong/winning-number-645",
+    "mode": "official-history-table",
+    "license": "public official website, no explicit reuse license found"
+  },
+  "recordCount": 1561,
+  "firstDrawDate": "2016-07-20",
+  "latestDrawDate": "2026-09-11",
+  "latestDrawId": "01561",
+  "fetchedAt": "2026-09-11T15:59:11Z",
+  "datasetSha256": "28ab1cf9c2cf9c802512b8a41f66db3d957cc7945bd435937fd94e26f8d4693c",
+  "validation": {
+    "valid": true,
+    "duplicates": 0,
+    "conflicts": 0
+  }
+}

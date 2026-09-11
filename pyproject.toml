@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vietlott-mega645"
+version = "0.1.0"
+description = "Small Python client for public Vietlott Mega 6/45 draw pages."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{ name = "Mega 6/45 Research Lab" }]
+license = { text = "MIT" }
+dependencies = [
+  "pandas>=2.2",
+  "streamlit>=1.40",
+]
+
+[project.scripts]
+vietlott-mega645 = "vietlott_mega645.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vietlott_mega645*"]
