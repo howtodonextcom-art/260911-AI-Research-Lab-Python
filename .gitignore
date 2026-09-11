@@ -7,3 +7,5 @@ __pycache__/
 .streamlit.*.log
 .venv/
 .firecrawl/
+.cursor/
+debug-*.log
