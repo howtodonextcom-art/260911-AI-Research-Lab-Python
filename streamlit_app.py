@@ -16,7 +16,7 @@ from vietlott_mega645.analytics import (
     summarize,
     top_numbers,
 )
-from vietlott_mega645.client import DrawRecord, VietlottMega645Client, serialize_jsonl
+from vietlott_mega645.client import DrawRecord, FetchError, VietlottMega645Client, serialize_jsonl, _agent_log
 from vietlott_mega645.storage import DEFAULT_DATA_DIR, DEFAULT_DATASET_PATH, DEFAULT_MANIFEST_PATH, load_manifest, load_records, merge_records, write_dataset
 
 
@@ -159,9 +159,40 @@ def render_frequency_bars(frame: pd.DataFrame) -> None:
 
 
 def sync_from_official(max_pages: int | None, delay_seconds: float) -> dict[str, object]:
+    # #region agent log
+    _agent_log(
+        "H4",
+        "streamlit_app.py:sync_from_official",
+        "sync start",
+        {"max_pages": max_pages, "delay_seconds": delay_seconds, "fetch_all": max_pages is None},
+    )
+    # #endregion
     client = VietlottMega645Client(timeout_seconds=20)
     existing = load_records(DEFAULT_DATASET_PATH)
-    incoming = client.fetch_history(max_pages=max_pages, delay_seconds=delay_seconds)
+    try:
+        incoming = client.fetch_history(max_pages=max_pages, delay_seconds=delay_seconds)
+    except FetchError as exc:
+        # #region agent log
+        _agent_log(
+            "H4",
+            "streamlit_app.py:sync_from_official",
+            "sync exception",
+            {"type": type(exc).__name__, "msg": str(exc)[:500], "handled": True},
+            run_id="post-fix",
+        )
+        # #endregion
+        return {"status": "error", "error": str(exc)}
+    except Exception as exc:  # noqa: BLE001 - debug capture then re-raise.
+        # #region agent log
+        _agent_log(
+            "H4",
+            "streamlit_app.py:sync_from_official",
+            "sync exception",
+            {"type": type(exc).__name__, "msg": str(exc)[:500], "handled": False},
+            run_id="post-fix",
+        )
+        # #endregion
+        raise
     merged, diff = merge_records(existing, incoming)
     if diff.conflicts:
         return {"status": "failed", "conflicts": list(diff.conflicts), "fetched": len(incoming)}
@@ -193,8 +224,10 @@ with st.sidebar:
             st.success(
                 f"Đã cập nhật: {result['recordCount']} kỳ, mới nhất #{result['latestDrawId']} ngày {result['latestDrawDate']}."
             )
-        else:
+        elif result["status"] == "failed":
             st.error(f"Không ghi dữ liệu vì có xung đột: {result.get('conflicts')}")
+        else:
+            st.error(f"Không đọc được vietlott.vn: {result.get('error')}")
     st.divider()
     st.write("File dữ liệu")
     st.code(f"{DEFAULT_DATASET_PATH.parent.name}/{DEFAULT_DATASET_PATH.name}", language="text")

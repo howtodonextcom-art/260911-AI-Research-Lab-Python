@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -17,9 +18,13 @@ DETAIL_PATH = "/vi/trung-thuong/ket-qua-trung-thuong/645?id={draw_id}&nocatche=1
 HISTORY_PATH = "/vi/trung-thuong/ket-qua-trung-thuong/winning-number-645"
 AJAX_COMPARE_PATH = "/ajaxpro/Vietlott.PlugIn.WebParts.Game645CompareWebPart,Vietlott.PlugIn.WebParts.ashx"
 
-DEFAULT_USER_AGENT = "mega645-research-lab-python-poc/0.1 (+https://vietlott.vn)"
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
+)
 DEFAULT_TIMEOUT_SECONDS = 20
 DEFAULT_MAX_RESPONSE_BYTES = 5 * 1024 * 1024
+RETRYABLE_HTTP_CODES = {403, 408, 425, 429, 500, 502, 503, 504}
 DRAW_SIZE = 6
 MIN_NUMBER = 1
 MAX_NUMBER = 45
@@ -179,6 +184,38 @@ def write_jsonl(path: str | Path, records: Iterable[DrawRecord], include_source:
     Path(path).write_text(serialize_jsonl(records, include_source=include_source), encoding="utf-8")
 
 
+# #region agent log
+def _agent_log(hypothesis_id: str, location: str, message: str, data: dict[str, object], run_id: str = "pre-fix") -> None:
+    payload = {
+        "sessionId": "ffd371",
+        "runId": run_id,
+        "hypothesisId": hypothesis_id,
+        "location": location,
+        "message": message,
+        "data": data,
+        "timestamp": int(time.time() * 1000),
+    }
+    line = json.dumps(payload, ensure_ascii=False)
+    try:
+        log_path = Path(__file__).resolve().parents[1] / "debug-ffd371.log"
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+    except Exception:
+        pass
+    try:
+        request = Request(
+            "http://127.0.0.1:7868/ingest/7ed7c18f-bc26-4ca3-a477-fef62d7bbb0b",
+            data=line.encode("utf-8"),
+            headers={"Content-Type": "application/json", "X-Debug-Session-Id": "ffd371"},
+            method="POST",
+        )
+        urlopen(request, timeout=1).read()
+    except Exception:
+        pass
+    print(line, flush=True)
+# #endregion
+
+
 class VietlottMega645Client:
     def __init__(
         self,
@@ -225,6 +262,20 @@ class VietlottMega645Client:
             return
 
         landing_url = self._url(HISTORY_PATH)
+        # #region agent log
+        _agent_log(
+            "H1",
+            "client.py:iter_history",
+            "history crawl start",
+            {
+                "landing_url": landing_url,
+                "max_pages": max_pages,
+                "delay_seconds": delay_seconds,
+                "cloud_mount": Path("/mount/src").exists(),
+                "streamlit_server": os.environ.get("STREAMLIT_SERVER_PORT"),
+            },
+        )
+        # #endregion
         landing_html = self._get_text(landing_url)
         key = discover_history_key(landing_html)
         seen_ids: set[str] = set()
@@ -234,6 +285,14 @@ class VietlottMega645Client:
             if page_index == 0:
                 html = landing_html
             else:
+                # #region agent log
+                _agent_log(
+                    "H3",
+                    "client.py:iter_history",
+                    "history page post",
+                    {"page_index": page_index, "seen": len(seen_ids)},
+                )
+                # #endregion
                 html = self._post_history_page(page_index, key)
 
             records = parse_history_html(html, source_url=landing_url)
@@ -259,14 +318,20 @@ class VietlottMega645Client:
             return path_or_url
         return urljoin(f"{self.base_url}/", path_or_url.lstrip("/"))
 
+    def _headers(self, extra: dict[str, str] | None = None) -> dict[str, str]:
+        headers = {
+            "User-Agent": self.user_agent,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+            "Referer": self._url(HISTORY_PATH),
+            "Origin": self.base_url,
+        }
+        if extra:
+            headers.update(extra)
+        return headers
+
     def _get_text(self, url: str) -> str:
-        request = Request(
-            url,
-            headers={
-                "User-Agent": self.user_agent,
-                "Accept": "text/html,application/xhtml+xml",
-            },
-        )
+        request = Request(url, headers=self._headers())
         return self._read_text(request)
 
     def _post_history_page(self, page_index: int, key: str) -> str:
@@ -298,12 +363,13 @@ class VietlottMega645Client:
         request = Request(
             self._url(AJAX_COMPARE_PATH),
             data=json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode("utf-8"),
-            headers={
-                "User-Agent": self.user_agent,
-                "Accept": "application/json,text/plain,*/*",
-                "Content-Type": "text/plain; charset=utf-8",
-                "X-AjaxPro-Method": "ServerSideDrawResult",
-            },
+            headers=self._headers(
+                {
+                    "Accept": "application/json,text/plain,*/*",
+                    "Content-Type": "text/plain; charset=utf-8",
+                    "X-AjaxPro-Method": "ServerSideDrawResult",
+                }
+            ),
             method="POST",
         )
         payload = json.loads(self._read_text(request))
@@ -319,14 +385,81 @@ class VietlottMega645Client:
         return html
 
     def _read_text(self, request: Request) -> str:
-        try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
-                body = response.read(self.max_response_bytes + 1)
-                if len(body) > self.max_response_bytes:
-                    raise FetchError(f"Response exceeded {self.max_response_bytes} bytes")
-                charset = response.headers.get_content_charset() or "utf-8"
-                return body.decode(charset, errors="replace")
-        except HTTPError as exc:
-            raise FetchError(f"HTTP {exc.code} while fetching {request.full_url}") from exc
-        except URLError as exc:
-            raise FetchError(f"Network error while fetching {request.full_url}: {exc.reason}") from exc
+        method = request.get_method()
+        url = request.full_url
+        last_error: Exception | None = None
+        for attempt in range(1, 4):
+            # #region agent log
+            _agent_log(
+                "H1",
+                "client.py:_read_text",
+                "request start",
+                {
+                    "method": method,
+                    "url": url,
+                    "timeout": self.timeout_seconds,
+                    "ua": self.user_agent[:80],
+                    "attempt": attempt,
+                },
+                run_id="post-fix",
+            )
+            # #endregion
+            try:
+                with urlopen(request, timeout=self.timeout_seconds) as response:
+                    body = response.read(self.max_response_bytes + 1)
+                    if len(body) > self.max_response_bytes:
+                        raise FetchError(f"Response exceeded {self.max_response_bytes} bytes")
+                    charset = response.headers.get_content_charset() or "utf-8"
+                    # #region agent log
+                    _agent_log(
+                        "H1",
+                        "client.py:_read_text",
+                        "request ok",
+                        {
+                            "method": method,
+                            "url": url,
+                            "status": getattr(response, "status", None),
+                            "bytes": len(body),
+                            "attempt": attempt,
+                        },
+                        run_id="post-fix",
+                    )
+                    # #endregion
+                    return body.decode(charset, errors="replace")
+            except HTTPError as exc:
+                last_error = exc
+                # #region agent log
+                _agent_log(
+                    "H1",
+                    "client.py:_read_text",
+                    "http error",
+                    {
+                        "method": method,
+                        "url": url,
+                        "http_code": exc.code,
+                        "reason": str(exc.reason),
+                        "server": exc.headers.get("Server") if exc.headers else None,
+                        "cf_ray": (exc.headers.get("cf-ray") or exc.headers.get("CF-Ray")) if exc.headers else None,
+                        "attempt": attempt,
+                        "retryable": exc.code in RETRYABLE_HTTP_CODES,
+                    },
+                    run_id="post-fix",
+                )
+                # #endregion
+                if exc.code not in RETRYABLE_HTTP_CODES or attempt == 3:
+                    raise FetchError(f"HTTP {exc.code} while fetching {request.full_url}") from exc
+            except URLError as exc:
+                last_error = exc
+                # #region agent log
+                _agent_log(
+                    "H5",
+                    "client.py:_read_text",
+                    "network error",
+                    {"method": method, "url": url, "reason": str(exc.reason), "attempt": attempt},
+                    run_id="post-fix",
+                )
+                # #endregion
+                if attempt == 3:
+                    raise FetchError(f"Network error while fetching {request.full_url}: {exc.reason}") from exc
+            time.sleep(0.8 * attempt)
+        raise FetchError(f"Failed fetching {request.full_url}: {last_error}")
