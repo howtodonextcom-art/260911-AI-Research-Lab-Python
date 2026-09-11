@@ -1,6 +1,9 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.streamlit/
+.streamlit/*
+!.streamlit/config.toml
+.streamlit/secrets.toml
 .streamlit.*.log
 .venv/
+.firecrawl/

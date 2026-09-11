@@ -1,0 +1,11 @@
+# Streamlit Community Cloud reads this file from the repo root.
+# Official: https://docs.streamlit.io/develop/api-reference/configuration/config.toml
+# Do not pin server.port here: Render/Docker may inject $PORT.
+
+[server]
+headless = true
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+serverAddress = "localhost"

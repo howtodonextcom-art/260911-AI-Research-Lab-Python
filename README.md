@@ -20,6 +20,20 @@ python -m vietlott_mega645 sync --all --delay 0.2
 streamlit run streamlit_app.py
 ```
 
+Local UI: [http://127.0.0.1:8501](http://127.0.0.1:8501)
+
+## Deploy
+
+Chosen path: **Streamlit Community Cloud** from GitHub `main`. Details, A/B results, and rejected options are in [DEPLOYMENT.md](DEPLOYMENT.md).
+
+1. Push this repository to GitHub (already: `howtodonextcom-art/260911-AI-Research-Lab-Python`).
+2. Open [https://share.streamlit.io](https://share.streamlit.io) and click **Create app**.
+3. Repository `howtodonextcom-art/260911-AI-Research-Lab-Python`, branch `main`, main file `streamlit_app.py`.
+4. Advanced settings: Python **3.12**.
+5. Optional custom subdomain, for example `vietlott-mega645`.
+
+Public URL shape: `https://<subdomain>.streamlit.app`
+
 The JSONL output uses the same minimal shape as the existing app dataset:
 
 ```json
